@@ -400,6 +400,19 @@ int cg_enable(
         if (r < 0)
                 return r;
 
+        /* Even no-op writes drain offline controllers throughout the subtree. Read this cgroup's current
+         * subtree_control: external runtimes may have modified it without updating the unit's cached
+         * cgroup_enabled_mask. If the read fails, retain the usual write path and its error handling. */
+        _cleanup_free_ char *controllers = NULL;
+        CGroupMask current;
+        if (read_one_line_file(fs, &controllers) >= 0 &&
+            cg_mask_from_string(controllers, &current) >= 0 &&
+            ((current ^ mask) & supported & CGROUP_MASK_V2) == 0) {
+                if (ret_result_mask)
+                        *ret_result_mask = current & supported & CGROUP_MASK_V2;
+                return 0;
+        }
+
         for (c = 0; c < _CGROUP_CONTROLLER_MAX; c++) {
                 CGroupMask bit = CGROUP_CONTROLLER_TO_MASK(c);
                 const char *n;
